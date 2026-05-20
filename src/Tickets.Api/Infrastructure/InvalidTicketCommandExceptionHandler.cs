@@ -18,14 +18,14 @@ public sealed class InvalidTicketCommandExceptionHandler(
             return false;
         }
 
-        logger.LogInformation(exception, "Invalid ticket command.");
+        logger.LogInformation(exception, InfrastructureConstants.LogMessages.InvalidTicketCommand);
 
         httpContext.Response.StatusCode = StatusCodes.Status400BadRequest;
 
         var problemDetails = new ProblemDetails
         {
             Status = StatusCodes.Status400BadRequest,
-            Title = "Invalid ticket command.",
+            Title = InfrastructureConstants.ProblemDetails.InvalidTicketCommandTitle,
             Detail = invalidCommand.Message,
             Instance = httpContext.Request.Path
         };
