@@ -78,9 +78,21 @@ public static class TicketEndpoints
         CancellationToken ct)
     {
         var query = session.Query<TicketSummary>();
-        var results = string.IsNullOrWhiteSpace(status)
-            ? await query.ToListAsync(ct)
-            : await query.Where(t => t.Status == status).ToListAsync(ct);
+        if (string.IsNullOrWhiteSpace(status))
+        {
+            var allResults = await query.ToListAsync(ct);
+            return Results.Ok(allResults);
+        }
+
+        if (!Enum.TryParse<TicketStatus>(status, ignoreCase: true, out var parsedStatus))
+        {
+            return Results.BadRequest(new
+            {
+                error = TicketEndpointConstants.InvalidStatusMessage(status)
+            });
+        }
+
+        var results = await query.Where(t => t.Status == parsedStatus).ToListAsync(ct);
         return Results.Ok(results);
     }
 
