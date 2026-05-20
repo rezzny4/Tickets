@@ -7,20 +7,30 @@ namespace Tickets.Api.Projections;
 public record TicketSummary(
     Guid Id,
     string Title,
-    string Status,
+    TicketStatus Status,
     string? Assignee,
+    string? ClosedBy,
     DateTimeOffset OpenedAt,
-    DateTimeOffset? LastUpdatedAt);
+    DateTimeOffset? LastUpdatedAt,
+    DateTimeOffset? ClosedAt);
 
 public class TicketSummaryProjection : SingleStreamProjection<TicketSummary>
 {
     public TicketSummary Create(IEvent<TicketOpened> @event) =>
-        new(@event.StreamId, @event.Data.Title, nameof(TicketStatus.Open), null, @event.Data.OpenedAt, @event.Data.OpenedAt);
+        new(
+            @event.StreamId,
+            @event.Data.Title,
+            TicketStatus.Open,
+            null,
+            null,
+            @event.Data.OpenedAt,
+            @event.Data.OpenedAt,
+            null);
 
     public TicketSummary Apply(TicketAssigned @event, TicketSummary current) =>
         current with
         {
-            Status = nameof(TicketStatus.Assigned),
+            Status = TicketStatus.Assigned,
             Assignee = @event.Assignee,
             LastUpdatedAt = @event.AssignedAt
         };
@@ -28,7 +38,16 @@ public class TicketSummaryProjection : SingleStreamProjection<TicketSummary>
     public TicketSummary Apply(TicketResolved @event, TicketSummary current) =>
         current with
         {
-            Status = nameof(TicketStatus.Resolved),
+            Status = TicketStatus.Resolved,
             LastUpdatedAt = @event.ResolvedAt
+        };
+
+    public TicketSummary Apply(TicketClosed @event, TicketSummary current) =>
+        current with
+        {
+            Status = TicketStatus.Closed,
+            LastUpdatedAt = @event.ClosedAt,
+            ClosedBy = @event.ClosedBy,
+            ClosedAt = @event.ClosedAt
         };
 }

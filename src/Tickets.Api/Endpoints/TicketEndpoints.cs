@@ -15,17 +15,10 @@ public static class TicketEndpoints
         TimeProvider clock,
         CancellationToken ct)
     {
-        try
-        {
-            var opened = TicketDecider.Open(cmd, clock.GetUtcNow());
-            var stream = session.Events.StartStream<Ticket>(opened);
-            await session.SaveChangesAsync(ct);
-            return Results.Created($"/tickets/{stream.Id}", new { id = stream.Id });
-        }
-        catch (InvalidTicketCommandException ex)
-        {
-            return Results.BadRequest(new { error = ex.Message });
-        }
+        var opened = TicketDecider.Open(cmd, clock.GetUtcNow());
+        var stream = session.Events.StartStream<Ticket>(opened);
+        await session.SaveChangesAsync(ct);
+        return Results.Created($"/tickets/{stream.Id}", new { id = stream.Id });
     }
 
     [WolverinePost("/tickets/{id:guid}/assign")]
@@ -39,20 +32,13 @@ public static class TicketEndpoints
         var stream = await session.Events.FetchForWriting<Ticket>(id, ct);
         if (stream.Aggregate is null) return Results.NotFound();
 
-        try
-        {
-            var evt = TicketDecider.Assign(
-                stream.Aggregate,
-                new AssignTicket(id, body.Assignee),
-                clock.GetUtcNow());
-            stream.AppendOne(evt);
-            await session.SaveChangesAsync(ct);
-            return Results.NoContent();
-        }
-        catch (InvalidTicketCommandException ex)
-        {
-            return Results.BadRequest(new { error = ex.Message });
-        }
+        var evt = TicketDecider.Assign(
+            stream.Aggregate,
+            new AssignTicket(id, body.Assignee),
+            clock.GetUtcNow());
+        stream.AppendOne(evt);
+        await session.SaveChangesAsync(ct);
+        return Results.NoContent();
     }
 
     [WolverinePost("/tickets/{id:guid}/resolve")]
@@ -66,20 +52,13 @@ public static class TicketEndpoints
         var stream = await session.Events.FetchForWriting<Ticket>(id, ct);
         if (stream.Aggregate is null) return Results.NotFound();
 
-        try
-        {
-            var evt = TicketDecider.Resolve(
-                stream.Aggregate,
-                new ResolveTicket(id, body.Resolution),
-                clock.GetUtcNow());
-            stream.AppendOne(evt);
-            await session.SaveChangesAsync(ct);
-            return Results.NoContent();
-        }
-        catch (InvalidTicketCommandException ex)
-        {
-            return Results.BadRequest(new { error = ex.Message });
-        }
+        var evt = TicketDecider.Resolve(
+            stream.Aggregate,
+            new ResolveTicket(id, body.Resolution),
+            clock.GetUtcNow());
+        stream.AppendOne(evt);
+        await session.SaveChangesAsync(ct);
+        return Results.NoContent();
     }
 
     [WolverineGet("/tickets/{id:guid}")]
@@ -99,12 +78,45 @@ public static class TicketEndpoints
         CancellationToken ct)
     {
         var query = session.Query<TicketSummary>();
-        var results = string.IsNullOrWhiteSpace(status)
-            ? await query.ToListAsync(ct)
-            : await query.Where(t => t.Status == status).ToListAsync(ct);
+        if (string.IsNullOrWhiteSpace(status))
+        {
+            var allResults = await query.ToListAsync(ct);
+            return Results.Ok(allResults);
+        }
+
+        if (!Enum.TryParse<TicketStatus>(status, ignoreCase: true, out var parsedStatus))
+        {
+            return Results.BadRequest(new
+            {
+                error = TicketEndpointConstants.InvalidStatusMessage(status)
+            });
+        }
+
+        var results = await query.Where(t => t.Status == parsedStatus).ToListAsync(ct);
         return Results.Ok(results);
+    }
+
+    [WolverinePost("/tickets/{id:guid}/close")]
+    public static async Task<IResult> Close(
+        Guid id,
+        [FromBody] CloseTicketBody body,
+        IDocumentSession session,
+        TimeProvider clock,
+        CancellationToken ct)
+    {
+        var stream = await session.Events.FetchForWriting<Ticket>(id, ct);
+        if (stream.Aggregate is null) return Results.NotFound();
+
+        var evt = TicketDecider.Close(
+            stream.Aggregate,
+            new CloseTicket(id, body.ClosedBy),
+            clock.GetUtcNow());
+        stream.AppendOne(evt);
+        await session.SaveChangesAsync(ct);
+        return Results.NoContent();
     }
 }
 
 public record AssignTicketBody(string Assignee);
 public record ResolveTicketBody(string Resolution);
+public record CloseTicketBody(string ClosedBy);

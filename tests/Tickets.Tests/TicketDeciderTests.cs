@@ -1,5 +1,6 @@
 using Shouldly;
 using Tickets.Api.Domain;
+using Tickets.Api.Projections;
 using Xunit;
 
 namespace Tickets.Tests;
@@ -56,6 +57,67 @@ public class TicketDeciderTests
         evt.Resolution.ShouldBe("fixed");
     }
 
+    [Fact]
+    public void Close_after_resolve_succeeds()
+    {
+        var ticket = Replay(
+            new TicketOpened("t", "d", Now),
+            new TicketAssigned("alice", Now),
+            new TicketResolved("fixed", Now));
+
+        var evt = TicketDecider.Close(ticket, new CloseTicket(Guid.NewGuid(), "bob"), Now);
+
+        evt.ClosedBy.ShouldBe("bob");
+        evt.ClosedAt.ShouldBe(Now);
+    }
+
+    [Fact]
+    public void Close_requires_resolved_status()
+    {
+        var ticket = Replay(new TicketOpened("t", "d", Now));
+
+        Should.Throw<InvalidTicketCommandException>(() =>
+            TicketDecider.Close(ticket, new CloseTicket(Guid.NewGuid(), "bob"), Now));
+    }
+
+    [Fact]
+    public void Close_rejects_blank_closed_by()
+    {
+        var ticket = Replay(
+            new TicketOpened("t", "d", Now),
+            new TicketAssigned("alice", Now),
+            new TicketResolved("fixed", Now));
+
+        Should.Throw<InvalidTicketCommandException>(() =>
+            TicketDecider.Close(ticket, new CloseTicket(Guid.NewGuid(), "  "), Now));
+    }
+
+    [Fact]
+    public void Assign_rejects_closed_ticket()
+    {
+        var ticket = Replay(
+            new TicketOpened("t", "d", Now),
+            new TicketAssigned("alice", Now),
+            new TicketResolved("fixed", Now),
+            new TicketClosed("bob", Now));
+
+        Should.Throw<InvalidTicketCommandException>(() =>
+            TicketDecider.Assign(ticket, new AssignTicket(Guid.NewGuid(), "charlie"), Now));
+    }
+
+    [Fact]
+    public void Resolve_rejects_closed_ticket()
+    {
+        var ticket = Replay(
+            new TicketOpened("t", "d", Now),
+            new TicketAssigned("alice", Now),
+            new TicketResolved("fixed", Now),
+            new TicketClosed("bob", Now));
+
+        Should.Throw<InvalidTicketCommandException>(() =>
+            TicketDecider.Resolve(ticket, new ResolveTicket(Guid.NewGuid(), "again"), Now));
+    }
+
     private static Ticket Replay(params object[] events)
     {
         var ticket = new Ticket();
@@ -66,6 +128,7 @@ public class TicketDeciderTests
                 case TicketOpened o: ticket.Apply(o); break;
                 case TicketAssigned a: ticket.Apply(a); break;
                 case TicketResolved r: ticket.Apply(r); break;
+                case TicketClosed c: ticket.Apply(c); break;
             }
         }
         return ticket;

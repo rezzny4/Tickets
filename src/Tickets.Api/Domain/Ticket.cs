@@ -7,6 +7,7 @@ public class Ticket
     public string Description { get; set; } = string.Empty;
     public string? Assignee { get; set; }
     public string? Resolution { get; set; }
+    public string? ClosedBy { get; set; }
     public TicketStatus Status { get; set; }
 
     public void Apply(TicketOpened e)
@@ -26,5 +27,11 @@ public class Ticket
     {
         Resolution = e.Resolution;
         Status = TicketStatus.Resolved;
+    }
+
+    public void Apply(TicketClosed e)
+    {
+        ClosedBy = e.ClosedBy;
+        Status = TicketStatus.Closed;
     }
 }
