@@ -104,7 +104,35 @@ public static class TicketEndpoints
             : await query.Where(t => t.Status == status).ToListAsync(ct);
         return Results.Ok(results);
     }
+
+    [WolverinePost("/tickets/{id:guid}/close")]
+    public static async Task<IResult> Close(
+        Guid id,
+        [FromBody] CloseTicketBody body,
+        IDocumentSession session,
+        TimeProvider clock,
+        CancellationToken ct)
+    {
+        var stream = await session.Events.FetchForWriting<Ticket>(id, ct);
+        if (stream.Aggregate is null) return Results.NotFound();
+
+        try
+        {
+            var evt = TicketDecider.Close(
+                stream.Aggregate,
+                new CloseTicket(id, body.ClosedBy),
+                clock.GetUtcNow());
+            stream.AppendOne(evt);
+            await session.SaveChangesAsync(ct);
+            return Results.NoContent();
+        }
+        catch (InvalidTicketCommandException ex)
+        {
+            return Results.BadRequest(new { error = ex.Message });
+        }
+    }
 }
 
 public record AssignTicketBody(string Assignee);
 public record ResolveTicketBody(string Resolution);
+public record CloseTicketBody(string ClosedBy);

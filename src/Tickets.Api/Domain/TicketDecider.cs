@@ -33,6 +33,18 @@ public static class TicketDecider
 
         return new TicketResolved(cmd.Resolution, now);
     }
+
+    public static TicketClosed Close(Ticket ticket, CloseTicket cmd, DateTimeOffset now)
+    {
+        if (ticket.Status != TicketStatus.Resolved)
+            throw new InvalidTicketCommandException(
+                $"Cannot close a ticket in status {ticket.Status}; ticket must be Resolved.");
+
+        if (string.IsNullOrWhiteSpace(cmd.ClosedBy))
+            throw new InvalidTicketCommandException("ClosedBy is required.");
+
+        return new TicketClosed(cmd.ClosedBy, now);
+    }
 }
 
 public class InvalidTicketCommandException(string message) : Exception(message);
